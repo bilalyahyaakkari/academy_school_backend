@@ -1,0 +1,139 @@
+// Prisma schema for the academy management app.
+//
+// To use:
+//   1. Set DATABASE_URL in .env to your Neon/Postgres connection string.
+//   2. Run: npx prisma migrate dev --name init
+//   3. Run: npx prisma db seed (after writing prisma/seed.ts) to create the admin user.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Auth ----------
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  name          String?
+  passwordHash  String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ---------- Domain ----------
+
+model Group {
+  id          String    @id @default(uuid())
+  name        String
+  minAge      Int?
+  maxAge      Int?
+  // Array of { day: "Monday", startTime: "16:00", endTime: "17:30" }
+  schedule    Json      @default("[]")
+  monthlyFee  Decimal   @db.Decimal(10, 2)
+  maxCapacity Int?
+  coachName   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  students    Student[]
+
+  @@index([name])
+}
+
+model Student {
+  id             String    @id @default(uuid())
+  fullName       String
+  dateOfBirth    DateTime  @db.Date
+  address        String?
+  school         String?
+  phoneNumber    String?
+  groupId        String?
+  isActive       Boolean   @default(true)
+  // Per-student fee override. Null = inherit from group, or fall back to Settings.defaultFee.
+  monthlyFee     Decimal?  @db.Decimal(10, 2)
+  notes          String?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  group          Group?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  payments       Payment[]
+  uniforms       Uniform[]
+
+  @@index([groupId])
+  @@index([isActive])
+  @@index([fullName])
+}
+
+model Uniform {
+  id        String      @id @default(uuid())
+  studentId String
+  /// Free-form size label (e.g. S, M, L, XL, XXL, "6Y"). Capped at 20 chars.
+  size      String      @db.VarChar(20)
+  price     Decimal     @db.Decimal(10, 2)
+  isPaid    Boolean     @default(false)
+  paidAt    DateTime?   @db.Date
+  orderedAt DateTime    @default(now()) @db.Date
+  notes     String?
+
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  student   Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@index([isPaid])
+}
+
+enum PaymentStatus {
+  PAID
+  UNPAID
+  PARTIAL
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  OTHER
+}
+
+model Payment {
+  id            String         @id @default(uuid())
+  studentId     String
+  month         Int            // 1-12
+  year          Int
+  amount        Decimal        @db.Decimal(10, 2)
+  status        PaymentStatus  @default(UNPAID)
+  paidAmount    Decimal        @default(0) @db.Decimal(10, 2)
+  paymentDate   DateTime?      @db.Date
+  paymentMethod PaymentMethod?
+  notes         String?
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  student       Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, month, year])
+  @@index([year, month])
+  @@index([status])
+}
+
+// ---------- Settings (single-row) ----------
+
+model Settings {
+  id               String   @id @default("singleton")
+  academyName      String   @default("Academy")
+  defaultFee       Decimal  @default(0) @db.Decimal(10, 2)
+  whatsappCountry  String   @default("963") // default country code (Syria); used to format wa.me links
+  // Custom WhatsApp reminder template. Supports placeholders:
+  //   {month}, {year}, {amount}, {academy}, {student}
+  // Null = use the built-in default template.
+  whatsappTemplate String?  @db.Text
+  updatedAt        DateTime @updatedAt
+}
