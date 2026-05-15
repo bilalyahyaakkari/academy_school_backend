@@ -1,0 +1,34 @@
+# Render Blueprint for the Academy School NestJS backend.
+# https://render.com/docs/blueprint-spec
+#
+# To deploy:
+#   1. Push this file to the academy_school_backend repo (already done if you're reading it on GitHub).
+#   2. In Render dashboard: New + → Blueprint → connect this repo.
+#   3. Fill the three env vars marked `sync: false` below (DATABASE_URL, JWT_SECRET, ADMIN_PASSWORD).
+#   4. After the first frontend deploy, edit FRONTEND_ORIGIN to the live Vercel URL.
+
+services:
+  - type: web
+    name: academy-school-backend
+    runtime: node
+    region: frankfurt
+    plan: free
+    # Install, generate Prisma client, build NestJS, apply migrations.
+    # `migrate deploy` is idempotent and safe to run on every deploy.
+    buildCommand: npm install && npx prisma generate && npm run build && npx prisma migrate deploy
+    startCommand: node dist/main.js
+    healthCheckPath: /api/auth/me
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # PORT is injected by Render automatically; main.ts reads it.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      # Set this to the Vercel frontend URL after the first frontend deploy.
+      # Without it CORS will block real browser requests in production.
+      - key: FRONTEND_ORIGIN
+        value: http://localhost:3000
