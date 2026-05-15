@@ -17,7 +17,8 @@ services:
     # `migrate deploy` is idempotent and safe to run on every deploy.
     buildCommand: npm install && npx prisma generate && npm run build && npx prisma migrate deploy
     startCommand: node dist/main.js
-    healthCheckPath: /api/auth/me
+    # No healthCheckPath: Render falls back to checking that the port is bound,
+    # which is what we want — there is no unauthenticated 200 endpoint to probe.
     envVars:
       - key: NODE_ENV
         value: production
