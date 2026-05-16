@@ -15,7 +15,10 @@ services:
     plan: free
     # Install, generate Prisma client, build NestJS, apply migrations.
     # `migrate deploy` is idempotent and safe to run on every deploy.
-    buildCommand: npm install && npx prisma generate && npm run build && npx prisma migrate deploy
+    # --include=dev is required because NODE_ENV=production makes npm skip
+    # devDependencies by default, but we need @nestjs/cli, prisma, and
+    # typescript at build time. They're not needed at runtime.
+    buildCommand: npm install --include=dev && npx prisma generate && npm run build && npx prisma migrate deploy
     startCommand: node dist/main.js
     # No healthCheckPath: Render falls back to checking that the port is bound,
     # which is what we want — there is no unauthenticated 200 endpoint to probe.
