@@ -18,8 +18,10 @@ import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import {
   uniformSchema,
   importUniformsSchema,
+  bulkDeleteSchema,
   type UniformDto,
   type ImportUniformsDto,
+  type BulkDeleteDto,
 } from "../common/schemas";
 
 @Controller("uniforms")
@@ -46,6 +48,13 @@ export class UniformsController {
     @Body(new ZodValidationPipe(importUniformsSchema)) body: ImportUniformsDto,
   ) {
     return this.uniforms.importMany(body);
+  }
+
+  @Post("bulk-delete")
+  bulkDelete(
+    @Body(new ZodValidationPipe(bulkDeleteSchema)) body: BulkDeleteDto,
+  ) {
+    return this.uniforms.bulkDelete(body);
   }
 
   @Put(":id")

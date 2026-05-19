@@ -22,7 +22,7 @@ async function bootstrap() {
   // but this handles class-transformer for whatever shapes pass through).
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
 
-  const port = config.get<number>("PORT", 4000);
+  const port = config.get<number>("PORT", 5001);
   await app.listen(port);
   new Logger("Bootstrap").log(`Listening on http://localhost:${port}/api`);
 }

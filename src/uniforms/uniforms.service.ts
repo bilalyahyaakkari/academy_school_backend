@@ -1,7 +1,11 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { serialize } from "../common/serialize";
-import type { UniformDto, ImportUniformsDto } from "../common/schemas";
+import type {
+  UniformDto,
+  ImportUniformsDto,
+  BulkDeleteDto,
+} from "../common/schemas";
 
 @Injectable()
 export class UniformsService {
@@ -126,5 +130,12 @@ export class UniformsService {
     if (!cur) throw new NotFoundException("Uniform order not found");
     await this.prisma.uniform.delete({ where: { id } });
     return { success: true };
+  }
+
+  async bulkDelete(dto: BulkDeleteDto) {
+    const result = await this.prisma.uniform.deleteMany({
+      where: { id: { in: dto.ids } },
+    });
+    return { deleted: result.count };
   }
 }
