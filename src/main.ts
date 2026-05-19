@@ -11,10 +11,20 @@ async function bootstrap() {
 
   app.setGlobalPrefix("api");
 
-  // CORS — frontend served from FRONTEND_ORIGIN. Allow credentials so the
-  // frontend can forward bearer tokens via Authorization headers.
+  // CORS — FRONTEND_ORIGIN may be a single origin or a comma-separated list
+  // (e.g. "http://localhost:3000,https://academy.vercel.app"). Trailing
+  // slashes are stripped so they don't cause spurious mismatches.
+  const originList = config
+    .get<string>("FRONTEND_ORIGIN", "http://localhost:3000")
+    .split(",")
+    .map((o) => o.trim().replace(/\/$/, ""))
+    .filter(Boolean);
   app.enableCors({
-    origin: config.get<string>("FRONTEND_ORIGIN", "http://localhost:3000"),
+    origin: (origin, cb) => {
+      // Same-origin / curl / server-to-server requests have no Origin header.
+      if (!origin) return cb(null, true);
+      cb(null, originList.includes(origin));
+    },
     credentials: true,
   });
 
