@@ -20,8 +20,10 @@ services:
     # typescript at build time. They're not needed at runtime.
     buildCommand: npm install --include=dev && npx prisma generate && npm run build && npx prisma migrate deploy
     startCommand: node dist/main.js
-    # No healthCheckPath: Render falls back to checking that the port is bound,
-    # which is what we want — there is no unauthenticated 200 endpoint to probe.
+    # Public liveness probe at /api/health. Always returns 200 if the HTTP layer
+    # is up; DB status is reported in the body (so transient Neon cold-starts
+    # don't cause Render to recycle the service).
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
