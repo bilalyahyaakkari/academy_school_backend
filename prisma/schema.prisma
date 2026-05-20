@@ -78,6 +78,9 @@ model Uniform {
   price     Decimal     @db.Decimal(10, 2)
   isPaid    Boolean     @default(false)
   paidAt    DateTime?   @db.Date
+  /// Did the student pick up / receive the uniform? Independent of payment.
+  isReceived Boolean    @default(false)
+  receivedAt DateTime?  @db.Date
   orderedAt DateTime    @default(now()) @db.Date
   notes     String?
 
@@ -88,6 +91,7 @@ model Uniform {
 
   @@index([studentId])
   @@index([isPaid])
+  @@index([isReceived])
 }
 
 enum PaymentStatus {

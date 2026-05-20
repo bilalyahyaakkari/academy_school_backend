@@ -100,6 +100,7 @@ export const uniformSchema = z.object({
   size: z.string().trim().min(1).max(20),
   price: z.number().min(0).max(1_000_000),
   isPaid: z.boolean().default(false),
+  isReceived: z.boolean().default(false),
   notes: optionalString,
 });
 export type UniformDto = z.infer<typeof uniformSchema>;

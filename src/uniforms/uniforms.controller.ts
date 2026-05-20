@@ -70,6 +70,11 @@ export class UniformsController {
     return this.uniforms.togglePaid(id);
   }
 
+  @Patch(":id/toggle-received")
+  toggleReceived(@Param("id", ParseUUIDPipe) id: string) {
+    return this.uniforms.toggleReceived(id);
+  }
+
   @Delete(":id")
   remove(@Param("id", ParseUUIDPipe) id: string) {
     return this.uniforms.remove(id);

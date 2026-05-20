@@ -32,6 +32,8 @@ export class UniformsService {
         price: dto.price,
         isPaid: dto.isPaid,
         paidAt: dto.isPaid ? new Date() : null,
+        isReceived: dto.isReceived,
+        receivedAt: dto.isReceived ? new Date() : null,
         notes: dto.notes ?? null,
       },
     });
@@ -54,6 +56,12 @@ export class UniformsService {
             ? cur.paidAt
             : new Date()
           : null,
+        isReceived: dto.isReceived,
+        receivedAt: dto.isReceived
+          ? cur.isReceived
+            ? cur.receivedAt
+            : new Date()
+          : null,
         notes: dto.notes ?? null,
       },
     });
@@ -68,6 +76,19 @@ export class UniformsService {
       data: {
         isPaid: !cur.isPaid,
         paidAt: !cur.isPaid ? new Date() : null,
+      },
+    });
+    return serialize(u);
+  }
+
+  async toggleReceived(id: string) {
+    const cur = await this.prisma.uniform.findUnique({ where: { id } });
+    if (!cur) throw new NotFoundException("Uniform order not found");
+    const u = await this.prisma.uniform.update({
+      where: { id },
+      data: {
+        isReceived: !cur.isReceived,
+        receivedAt: !cur.isReceived ? new Date() : null,
       },
     });
     return serialize(u);
