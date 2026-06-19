@@ -13,7 +13,10 @@ export class UniformsService {
 
   async list(filter: { isPaid?: boolean }) {
     const uniforms = await this.prisma.uniform.findMany({
-      where: filter.isPaid !== undefined ? { isPaid: filter.isPaid } : undefined,
+      where: {
+        student: { archived: false },
+        ...(filter.isPaid !== undefined ? { isPaid: filter.isPaid } : {}),
+      },
       orderBy: [{ isPaid: "asc" }, { orderedAt: "desc" }],
       include: {
         student: {

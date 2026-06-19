@@ -54,6 +54,10 @@ model Student {
   phoneNumber    String?
   groupId        String?
   isActive       Boolean   @default(true)
+  // Archived students are completely hidden from payments and uniforms screens.
+  // Reversible — set archived=false to restore.
+  archived       Boolean   @default(false)
+  archivedAt     DateTime?
   // Per-student fee override. Null = inherit from group, or fall back to Settings.defaultFee.
   monthlyFee     Decimal?  @db.Decimal(10, 2)
   notes          String?

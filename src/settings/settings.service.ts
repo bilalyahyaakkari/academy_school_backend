@@ -49,6 +49,17 @@ export class SettingsService {
       create: { id: "singleton", ...data },
       update: data,
     });
+
+    // Default-fee fallback path: cascade to UNPAID invoices for students with
+    // no per-student override AND no group (group fee would otherwise win).
+    await this.prisma.payment.updateMany({
+      where: {
+        status: "UNPAID",
+        student: { monthlyFee: null, groupId: null },
+      },
+      data: { amount: dto.defaultFee },
+    });
+
     return serialize(settings);
   }
 }

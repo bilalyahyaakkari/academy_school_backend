@@ -8,10 +8,10 @@ export class PaymentsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async listForMonth(year: number, month: number) {
-    // Returns one row per active student, with their payment for this month
-    // (if any) embedded.
+    // Returns one row per active, non-archived student, with their payment for
+    // this month (if any) embedded.
     const students = await this.prisma.student.findMany({
-      where: { isActive: true },
+      where: { isActive: true, archived: false },
       orderBy: { fullName: "asc" },
       include: {
         group: { select: { id: true, name: true } },
@@ -22,7 +22,9 @@ export class PaymentsService {
   }
 
   async history(filter: { from?: string; to?: string; status?: string }) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = {
+      student: { archived: false },
+    };
     if (filter.status === "PAID" || filter.status === "UNPAID" || filter.status === "PARTIAL") {
       where.status = filter.status;
     }
@@ -51,7 +53,7 @@ export class PaymentsService {
     const defaultFee = Number(settings?.defaultFee ?? 0);
 
     const students = await this.prisma.student.findMany({
-      where: { isActive: true },
+      where: { isActive: true, archived: false },
       include: { group: { select: { monthlyFee: true } } },
     });
 
@@ -148,7 +150,10 @@ export class PaymentsService {
    */
   async outstanding() {
     const unpaid = await this.prisma.payment.findMany({
-      where: { status: { in: ["UNPAID", "PARTIAL"] } },
+      where: {
+        status: { in: ["UNPAID", "PARTIAL"] },
+        student: { archived: false },
+      },
       orderBy: [{ year: "asc" }, { month: "asc" }],
       include: {
         student: {

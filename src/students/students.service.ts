@@ -8,6 +8,12 @@ export type ListStudentsFilter = {
   q?: string;
   groupId?: string | "none";
   status?: "active" | "inactive";
+  /**
+   * "exclude" (default) hides archived students.
+   * "only" returns ONLY archived students (the archive view).
+   * "include" returns both.
+   */
+  archived?: "exclude" | "only" | "include";
 };
 
 @Injectable()
@@ -21,6 +27,10 @@ export class StudentsService {
     else if (filter.groupId) where.groupId = filter.groupId;
     if (filter.status === "active") where.isActive = true;
     if (filter.status === "inactive") where.isActive = false;
+
+    // Default: hide archived. Callers can opt in.
+    if (filter.archived === "only") where.archived = true;
+    else if (filter.archived !== "include") where.archived = false;
 
     const students = await this.prisma.student.findMany({
       where,
@@ -74,8 +84,60 @@ export class StudentsService {
         monthlyFee: dto.monthlyFee ?? null,
         notes: dto.notes ?? null,
       },
+      include: { group: { select: { monthlyFee: true } } },
     });
+
+    // Reflect the new effective fee on every existing UNPAID invoice for this
+    // student. PAID / PARTIAL invoices are left alone (they're already settled).
+    await this.syncUnpaidInvoicesToCurrentFee(student.id);
+
     return serialize(student);
+  }
+
+  /**
+   * Recomputes the student's effective monthly fee (override > group > default)
+   * and updates every UNPAID Payment row to match. No-op when the amount is
+   * already up to date.
+   */
+  private async syncUnpaidInvoicesToCurrentFee(studentId: string) {
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      select: {
+        monthlyFee: true,
+        group: { select: { monthlyFee: true } },
+      },
+    });
+    if (!student) return;
+
+    const settings = await this.prisma.settings.findUnique({
+      where: { id: "singleton" },
+      select: { defaultFee: true },
+    });
+    const defaultFee = Number(settings?.defaultFee ?? 0);
+
+    const effective =
+      student.monthlyFee != null
+        ? Number(student.monthlyFee)
+        : student.group
+          ? Number(student.group.monthlyFee)
+          : defaultFee;
+
+    await this.prisma.payment.updateMany({
+      where: { studentId, status: "UNPAID" },
+      data: { amount: effective },
+    });
+  }
+
+  async setArchived(id: string, archived: boolean) {
+    await this.assertExists(id);
+    const updated = await this.prisma.student.update({
+      where: { id },
+      data: {
+        archived,
+        archivedAt: archived ? new Date() : null,
+      },
+    });
+    return serialize(updated);
   }
 
   async toggleActive(id: string) {

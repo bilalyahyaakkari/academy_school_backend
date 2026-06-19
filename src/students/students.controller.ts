@@ -34,8 +34,9 @@ export class StudentsController {
     @Query("q") q?: string,
     @Query("groupId") groupId?: string,
     @Query("status") status?: "active" | "inactive",
+    @Query("archived") archived?: "exclude" | "only" | "include",
   ) {
-    return this.students.list({ q, groupId, status });
+    return this.students.list({ q, groupId, status, archived });
   }
 
   @Get(":id")
@@ -74,6 +75,16 @@ export class StudentsController {
   @Patch(":id/toggle-active")
   toggleActive(@Param("id", ParseUUIDPipe) id: string) {
     return this.students.toggleActive(id);
+  }
+
+  @Patch(":id/archive")
+  archive(@Param("id", ParseUUIDPipe) id: string) {
+    return this.students.setArchived(id, true);
+  }
+
+  @Patch(":id/unarchive")
+  unarchive(@Param("id", ParseUUIDPipe) id: string) {
+    return this.students.setArchived(id, false);
   }
 
   @Delete(":id")

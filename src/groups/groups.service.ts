@@ -57,6 +57,17 @@ export class GroupsService {
         coachName: dto.coachName ?? null,
       },
     });
+
+    // Cascade fee change → every UNPAID invoice belonging to a student in this
+    // group who doesn't have a per-student fee override.
+    await this.prisma.payment.updateMany({
+      where: {
+        status: "UNPAID",
+        student: { groupId: id, monthlyFee: null },
+      },
+      data: { amount: dto.monthlyFee },
+    });
+
     return serialize(g);
   }
 
