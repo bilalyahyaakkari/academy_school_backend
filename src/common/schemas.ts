@@ -100,10 +100,17 @@ export const uniformSchema = z.object({
   size: z.string().trim().min(1).max(20),
   price: z.number().min(0).max(1_000_000),
   isPaid: z.boolean().default(false),
+  /** Cumulative paid so far. Optional on input — derived if omitted. */
+  paidAmount: z.number().min(0).max(1_000_000).optional(),
   isReceived: z.boolean().default(false),
   notes: optionalString,
 });
 export type UniformDto = z.infer<typeof uniformSchema>;
+
+export const uniformAddPaymentSchema = z.object({
+  amount: z.number().positive().max(1_000_000),
+});
+export type UniformAddPaymentDto = z.infer<typeof uniformAddPaymentSchema>;
 
 export const importUniformsSchema = z.object({
   uniforms: z.array(uniformSchema).min(1).max(2000),

@@ -19,9 +19,11 @@ import {
   uniformSchema,
   importUniformsSchema,
   bulkDeleteSchema,
+  uniformAddPaymentSchema,
   type UniformDto,
   type ImportUniformsDto,
   type BulkDeleteDto,
+  type UniformAddPaymentDto,
 } from "../common/schemas";
 
 @Controller("uniforms")
@@ -68,6 +70,14 @@ export class UniformsController {
   @Patch(":id/toggle-paid")
   togglePaid(@Param("id", ParseUUIDPipe) id: string) {
     return this.uniforms.togglePaid(id);
+  }
+
+  @Post(":id/add-payment")
+  addPayment(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(uniformAddPaymentSchema)) body: UniformAddPaymentDto,
+  ) {
+    return this.uniforms.addPayment(id, body);
   }
 
   @Patch(":id/toggle-received")

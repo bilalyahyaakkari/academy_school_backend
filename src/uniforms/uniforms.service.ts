@@ -5,7 +5,12 @@ import type {
   UniformDto,
   ImportUniformsDto,
   BulkDeleteDto,
+  UniformAddPaymentDto,
 } from "../common/schemas";
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
 
 @Injectable()
 export class UniformsService {
@@ -28,13 +33,23 @@ export class UniformsService {
   }
 
   async create(dto: UniformDto) {
+    // If the caller provided paidAmount, trust it (and clamp); otherwise infer
+    // from the isPaid flag: paid → fully paid, unpaid → 0.
+    const paidAmount = clamp(
+      dto.paidAmount ?? (dto.isPaid ? dto.price : 0),
+      0,
+      dto.price,
+    );
+    const isPaid = paidAmount >= dto.price && dto.price > 0;
+
     const u = await this.prisma.uniform.create({
       data: {
         studentId: dto.studentId,
         size: dto.size,
         price: dto.price,
-        isPaid: dto.isPaid,
-        paidAt: dto.isPaid ? new Date() : null,
+        paidAmount,
+        isPaid,
+        paidAt: isPaid ? new Date() : null,
         isReceived: dto.isReceived,
         receivedAt: dto.isReceived ? new Date() : null,
         notes: dto.notes ?? null,
@@ -46,19 +61,25 @@ export class UniformsService {
   async update(id: string, dto: UniformDto) {
     const cur = await this.prisma.uniform.findUnique({ where: { id } });
     if (!cur) throw new NotFoundException("Uniform order not found");
+
+    // If caller passed paidAmount, use it; otherwise preserve current.
+    // But if isPaid toggles, sync paidAmount to match.
+    let paidAmount =
+      dto.paidAmount !== undefined ? dto.paidAmount : Number(cur.paidAmount);
+    if (dto.isPaid && paidAmount < dto.price) paidAmount = dto.price;
+    if (!dto.isPaid && paidAmount >= dto.price && dto.price > 0) paidAmount = 0;
+    paidAmount = clamp(paidAmount, 0, dto.price);
+    const isPaid = paidAmount >= dto.price && dto.price > 0;
+
     const u = await this.prisma.uniform.update({
       where: { id },
       data: {
         studentId: dto.studentId,
         size: dto.size,
         price: dto.price,
-        isPaid: dto.isPaid,
-        // Stamp paidAt when transitioning unpaid → paid; clear it when transitioning back.
-        paidAt: dto.isPaid
-          ? cur.isPaid
-            ? cur.paidAt
-            : new Date()
-          : null,
+        paidAmount,
+        isPaid,
+        paidAt: isPaid ? (cur.isPaid ? cur.paidAt : new Date()) : null,
         isReceived: dto.isReceived,
         receivedAt: dto.isReceived
           ? cur.isReceived
@@ -74,11 +95,40 @@ export class UniformsService {
   async togglePaid(id: string) {
     const cur = await this.prisma.uniform.findUnique({ where: { id } });
     if (!cur) throw new NotFoundException("Uniform order not found");
+    const next = !cur.isPaid;
     const u = await this.prisma.uniform.update({
       where: { id },
       data: {
-        isPaid: !cur.isPaid,
-        paidAt: !cur.isPaid ? new Date() : null,
+        isPaid: next,
+        // Toggling "paid" jumps paidAmount to full price; toggling "unpaid"
+        // resets it to 0 so the running total reflects the new state.
+        paidAmount: next ? cur.price : 0,
+        paidAt: next ? new Date() : null,
+      },
+    });
+    return serialize(u);
+  }
+
+  /**
+   * Record a partial (or full) payment against an outstanding uniform order.
+   * Bumps paidAmount by the given amount, clamped to never exceed price.
+   * Auto-flips isPaid when the running total reaches price.
+   */
+  async addPayment(id: string, dto: UniformAddPaymentDto) {
+    const cur = await this.prisma.uniform.findUnique({ where: { id } });
+    if (!cur) throw new NotFoundException("Uniform order not found");
+
+    const price = Number(cur.price);
+    const before = Number(cur.paidAmount);
+    const next = clamp(before + dto.amount, 0, price);
+    const isPaid = next >= price && price > 0;
+
+    const u = await this.prisma.uniform.update({
+      where: { id },
+      data: {
+        paidAmount: next,
+        isPaid,
+        paidAt: isPaid && !cur.isPaid ? new Date() : cur.paidAt,
       },
     });
     return serialize(u);

@@ -81,6 +81,8 @@ model Uniform {
   size      String      @db.VarChar(20)
   price     Decimal     @db.Decimal(10, 2)
   isPaid    Boolean     @default(false)
+  /// Cumulative amount paid so far. isPaid is set true when paidAmount >= price.
+  paidAmount Decimal    @default(0) @db.Decimal(10, 2)
   paidAt    DateTime?   @db.Date
   /// Did the student pick up / receive the uniform? Independent of payment.
   isReceived Boolean    @default(false)
