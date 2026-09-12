@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { RosterService } from "../roster/roster.service";
 import { serialize } from "../common/serialize";
 import type { StudentDto, ImportStudentsDto, BulkDeleteDto } from "../common/schemas";
 import type { Prisma } from "@prisma/client";
@@ -18,7 +19,10 @@ export type ListStudentsFilter = {
 
 @Injectable()
 export class StudentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly roster: RosterService,
+  ) {}
 
   async list(filter: ListStudentsFilter) {
     const where: Prisma.StudentWhereInput = {};
@@ -66,6 +70,8 @@ export class StudentsService {
         notes: dto.notes ?? null,
       },
     });
+    // A new student joins the month they were added in.
+    await this.roster.enrollCurrentMonth(student.id, student.groupId);
     return serialize(student);
   }
 
@@ -90,6 +96,10 @@ export class StudentsService {
     // Reflect the new effective fee on every existing UNPAID invoice for this
     // student. PAID / PARTIAL invoices are left alone (they're already settled).
     await this.syncUnpaidInvoicesToCurrentFee(student.id);
+
+    // Keep the roster's group snapshot current from this month forward. Past
+    // months keep the group the student actually trained with.
+    await this.roster.syncGroupSnapshot(student.id, student.groupId);
 
     return serialize(student);
   }
@@ -128,6 +138,16 @@ export class StudentsService {
     });
   }
 
+  /**
+   * Archive = the student has left.
+   *
+   * This only affects what comes NEXT: months after the current one are dropped
+   * from the roster so they're no longer carried forward or invoiced. The
+   * current month and every past month keep them, because they really were
+   * there — that history (and any balance they still owe) stays visible.
+   *
+   * Un-archiving puts them back on the current month's roster.
+   */
   async setArchived(id: string, archived: boolean) {
     await this.assertExists(id);
     const updated = await this.prisma.student.update({
@@ -137,6 +157,13 @@ export class StudentsService {
         archivedAt: archived ? new Date() : null,
       },
     });
+
+    if (archived) {
+      await this.roster.dropFutureMonths(id);
+    } else {
+      await this.roster.enrollCurrentMonth(id, updated.groupId);
+    }
+
     return serialize(updated);
   }
 
@@ -208,6 +235,7 @@ export class StudentsService {
             notes: s.notes ?? null,
           },
         });
+        await this.roster.enrollCurrentMonth(student.id, student.groupId);
         created.push({ row: i + 2, id: student.id, fullName: student.fullName });
       } catch (e) {
         errors.push({

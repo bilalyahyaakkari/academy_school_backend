@@ -95,6 +95,50 @@ export const addPaymentSchema = z.object({
 });
 export type AddPaymentDto = z.infer<typeof addPaymentSchema>;
 
+// ---------- Monthly roster ----------
+
+const yearMonth = {
+  year: z.number().int().min(2000).max(2100),
+  month: z.number().int().min(1).max(12),
+};
+
+export const rosterMonthSchema = z.object(yearMonth);
+
+export const rosterAddSchema = z.object({
+  ...yearMonth,
+  studentIds: z.array(z.string().uuid()).min(1).max(2000),
+});
+export type RosterAddDto = z.infer<typeof rosterAddSchema>;
+
+export const rosterRemoveSchema = z.object({
+  ...yearMonth,
+  studentId: z.string().uuid(),
+});
+export type RosterRemoveDto = z.infer<typeof rosterRemoveSchema>;
+
+// ---------- Attendance ----------
+
+export const attendanceSessionSchema = z.object({
+  groupId: z.string().uuid(),
+  /** YYYY-MM-DD. The day the checklist is for. */
+  date: isoDate,
+  notes: optionalString,
+});
+export type AttendanceSessionDto = z.infer<typeof attendanceSessionSchema>;
+
+export const attendanceSaveSchema = z.object({
+  records: z
+    .array(
+      z.object({
+        studentId: z.string().uuid(),
+        present: z.boolean(),
+      }),
+    )
+    .max(2000),
+  notes: optionalString,
+});
+export type AttendanceSaveDto = z.infer<typeof attendanceSaveSchema>;
+
 export const uniformSchema = z.object({
   studentId: z.string().uuid(),
   size: z.string().trim().min(1).max(20),

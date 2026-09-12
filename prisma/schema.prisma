@@ -41,6 +41,8 @@ model Group {
   updatedAt   DateTime  @updatedAt
 
   students    Student[]
+  enrollments Enrollment[]
+  sessions    AttendanceSession[]
 
   @@index([name])
 }
@@ -54,7 +56,9 @@ model Student {
   phoneNumber    String?
   groupId        String?
   isActive       Boolean   @default(true)
-  // Archived students are completely hidden from payments and uniforms screens.
+  // Archived = the student has left. They are hidden from the default students
+  // list and are no longer carried forward into NEW monthly rosters, but every
+  // month they were already enrolled in keeps them (see Enrollment).
   // Reversible — set archived=false to restore.
   archived       Boolean   @default(false)
   archivedAt     DateTime?
@@ -68,6 +72,8 @@ model Student {
   group          Group?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
   payments       Payment[]
   uniforms       Uniform[]
+  enrollments    Enrollment[]
+  attendance     AttendanceRecord[]
 
   @@index([groupId])
   @@index([isActive])
@@ -132,6 +138,67 @@ model Payment {
   @@unique([studentId, month, year])
   @@index([year, month])
   @@index([status])
+}
+
+// ---------- Monthly roster ----------
+
+/// One row = "this student belongs to the academy during this month".
+///
+/// This is what makes months independent of each other: a student who leaves in
+/// October keeps their September row, and a student who comes back in December
+/// gets a fresh December row without touching the months in between. Archiving a
+/// student only stops FUTURE rows from being created — history stays intact.
+///
+/// Rows are created by carrying the previous month forward (see
+/// RosterService.ensureSeeded) and then edited by hand for joiners / leavers.
+model Enrollment {
+  id        String   @id @default(uuid())
+  studentId String
+  year      Int
+  month     Int // 1-12
+  /// Snapshot of the group the student trained with that month. Kept in sync
+  /// for the current + future months when the student is moved to another group,
+  /// so past months still show where they actually were.
+  groupId   String?
+  createdAt DateTime @default(now())
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  group   Group?  @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, year, month])
+  @@index([year, month])
+  @@index([groupId])
+}
+
+// ---------- Attendance ----------
+
+/// One checklist: a single group on a single day.
+model AttendanceSession {
+  id        String   @id @default(uuid())
+  groupId   String
+  date      DateTime @db.Date
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group   Group              @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  records AttendanceRecord[]
+
+  @@unique([groupId, date])
+  @@index([date])
+}
+
+model AttendanceRecord {
+  id        String  @id @default(uuid())
+  sessionId String
+  studentId String
+  present   Boolean @default(false)
+
+  session AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, studentId])
+  @@index([studentId])
 }
 
 // ---------- Settings (single-row) ----------

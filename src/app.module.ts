@@ -6,6 +6,8 @@ import { AuthModule } from "./auth/auth.module";
 import { StudentsModule } from "./students/students.module";
 import { GroupsModule } from "./groups/groups.module";
 import { PaymentsModule } from "./payments/payments.module";
+import { RosterModule } from "./roster/roster.module";
+import { AttendanceModule } from "./attendance/attendance.module";
 import { SettingsModule } from "./settings/settings.module";
 import { UniformsModule } from "./uniforms/uniforms.module";
 import { HealthModule } from "./health/health.module";
@@ -19,6 +21,8 @@ import { HealthModule } from "./health/health.module";
     StudentsModule,
     GroupsModule,
     PaymentsModule,
+    RosterModule,
+    AttendanceModule,
     SettingsModule,
     UniformsModule,
     HealthModule,

@@ -1,30 +1,58 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { RosterService } from "../roster/roster.service";
 import { serialize } from "../common/serialize";
 import type { PaymentUpdateDto, AddPaymentDto } from "../common/schemas";
 
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly roster: RosterService,
+  ) {}
 
+  /**
+   * One row per student who belongs to THIS month, with their invoice embedded.
+   *
+   * The list comes from the monthly roster, not from `isActive` — that's what
+   * keeps each month's payments separate: a student who left in October is still
+   * listed under September, and a student who came back in December doesn't
+   * retroactively appear in the months they were gone.
+   *
+   * Students who are off the roster but still carry an invoice for the month are
+   * kept too (flagged `onRoster: false`), so an unsettled balance can never be
+   * hidden just by removing someone from a month.
+   */
   async listForMonth(year: number, month: number) {
-    // Returns one row per active, non-archived student, with their payment for
-    // this month (if any) embedded.
+    const rosterIds = await this.roster.studentIdsForMonth(year, month);
+
+    const invoiced = await this.prisma.payment.findMany({
+      where: { year, month },
+      select: { studentId: true },
+    });
+
+    const onRoster = new Set(rosterIds);
+    const ids = Array.from(new Set([...rosterIds, ...invoiced.map((p) => p.studentId)]));
+    if (ids.length === 0) return [];
+
     const students = await this.prisma.student.findMany({
-      where: { isActive: true, archived: false },
+      where: { id: { in: ids } },
       orderBy: { fullName: "asc" },
       include: {
         group: { select: { id: true, name: true } },
         payments: { where: { year, month }, take: 1 },
       },
     });
-    return serialize(students);
+
+    return serialize(
+      students.map((s) => ({ ...s, onRoster: onRoster.has(s.id) })),
+    );
   }
 
   async history(filter: { from?: string; to?: string; status?: string }) {
-    const where: Record<string, unknown> = {
-      student: { archived: false },
-    };
+    // No archived filter: history is history — a student who has left still
+    // shows the months they paid for.
+    const where: Record<string, unknown> = {};
     if (filter.status === "PAID" || filter.status === "UNPAID" || filter.status === "PARTIAL") {
       where.status = filter.status;
     }
@@ -45,15 +73,19 @@ export class PaymentsService {
   }
 
   /**
-   * Creates UNPAID rows for every active student who doesn't already have one
-   * for this month. Idempotent.
+   * Creates UNPAID rows for every student on this month's roster who doesn't
+   * already have one. Idempotent.
    */
   async generateInvoices(year: number, month: number) {
     const settings = await this.prisma.settings.findUnique({ where: { id: "singleton" } });
     const defaultFee = Number(settings?.defaultFee ?? 0);
 
+    // Invoice exactly the students on this month's roster.
+    const rosterIds = await this.roster.studentIdsForMonth(year, month);
+    if (rosterIds.length === 0) return { created: 0, skipped: 0 };
+
     const students = await this.prisma.student.findMany({
-      where: { isActive: true, archived: false },
+      where: { id: { in: rosterIds } },
       include: { group: { select: { monthlyFee: true } } },
     });
 
@@ -147,13 +179,13 @@ export class PaymentsService {
    * Per-student aggregate of unpaid balances across all months.
    * Used by the "Outstanding" view so admins can see at a glance who owes
    * how much, sorted by largest balance first.
+   *
+   * Students who have left are included (flagged `archived`) — leaving doesn't
+   * settle a debt, and hiding them is how balances used to go missing.
    */
   async outstanding() {
     const unpaid = await this.prisma.payment.findMany({
-      where: {
-        status: { in: ["UNPAID", "PARTIAL"] },
-        student: { archived: false },
-      },
+      where: { status: { in: ["UNPAID", "PARTIAL"] } },
       orderBy: [{ year: "asc" }, { month: "asc" }],
       include: {
         student: {
@@ -162,6 +194,7 @@ export class PaymentsService {
             fullName: true,
             phoneNumber: true,
             isActive: true,
+            archived: true,
             group: { select: { id: true, name: true } },
           },
         },
@@ -173,6 +206,7 @@ export class PaymentsService {
       fullName: string;
       phoneNumber: string | null;
       isActive: boolean;
+      archived: boolean;
       group: { id: string; name: string } | null;
       unpaidAmount: number;
       unpaidCount: number;
@@ -193,6 +227,7 @@ export class PaymentsService {
           fullName: p.student.fullName,
           phoneNumber: p.student.phoneNumber,
           isActive: p.student.isActive,
+          archived: p.student.archived,
           group: p.student.group,
           unpaidAmount: due,
           unpaidCount: 1,
