@@ -234,21 +234,52 @@ export class RosterService {
   }
 
   /**
-   * Removes a student from one month. Their invoice for that month is kept on
-   * purpose — money already recorded shouldn't disappear because someone left.
+   * Discards invoices for months the student is no longer part of.
+   *
+   * An invoice for a month someone wasn't enrolled in isn't a debt — leaving it
+   * behind would keep inflating the Outstanding total forever. Anything with
+   * money already recorded against it is kept regardless, and reported back so
+   * the UI can say so: a removal must never erase a payment that was taken.
+   */
+  private async discardEmptyInvoices(
+    studentId: string,
+    months: { year: number; month: number }[],
+  ) {
+    if (months.length === 0) return { deleted: 0, kept: [] };
+
+    const invoices = await this.prisma.payment.findMany({
+      where: {
+        studentId,
+        OR: months.map((m) => ({ year: m.year, month: m.month })),
+      },
+      select: { id: true, year: true, month: true, amount: true, paidAmount: true },
+    });
+
+    const empty = invoices.filter((p) => Number(p.paidAmount) <= 0);
+    const kept = invoices.filter((p) => Number(p.paidAmount) > 0);
+
+    if (empty.length > 0) {
+      await this.prisma.payment.deleteMany({
+        where: { id: { in: empty.map((p) => p.id) } },
+      });
+    }
+
+    return { deleted: empty.length, kept: serialize(kept) };
+  }
+
+  /**
+   * Removes a student from one month, and drops that month's invoice with them
+   * unless money has already been recorded against it.
    */
   async remove(year: number, month: number, studentId: string) {
     await this.prisma.enrollment.deleteMany({ where: { year, month, studentId } });
+    const invoices = await this.discardEmptyInvoices(studentId, [{ year, month }]);
 
-    const payment = await this.prisma.payment.findUnique({
-      where: { studentId_month_year: { studentId, month, year } },
-      select: { id: true, amount: true, paidAmount: true, status: true },
-    });
-
-    return serialize({
+    return {
       removed: true,
-      keptPayment: payment,
-    });
+      deletedInvoices: invoices.deleted,
+      keptInvoices: invoices.kept,
+    };
   }
 
   /**
@@ -261,15 +292,28 @@ export class RosterService {
       where: { studentId },
       select: { id: true, year: true, month: true },
     });
-    const ids = rows.filter((r) => ordinal(r.year, r.month) >= from).map((r) => r.id);
-    if (ids.length > 0) {
-      await this.prisma.enrollment.deleteMany({ where: { id: { in: ids } } });
+    const dropped = rows.filter((r) => ordinal(r.year, r.month) >= from);
+    if (dropped.length > 0) {
+      await this.prisma.enrollment.deleteMany({
+        where: { id: { in: dropped.map((r) => r.id) } },
+      });
     }
+
+    const invoices = await this.discardEmptyInvoices(
+      studentId,
+      dropped.map((r) => ({ year: r.year, month: r.month })),
+    );
+
     await this.prisma.student.update({
       where: { id: studentId },
       data: { archived: true, archivedAt: new Date(), isActive: false },
     });
-    return { removedMonths: ids.length };
+
+    return {
+      removedMonths: dropped.length,
+      deletedInvoices: invoices.deleted,
+      keptInvoices: invoices.kept,
+    };
   }
 
   /** Months that have a roster, newest first, with headcounts. */

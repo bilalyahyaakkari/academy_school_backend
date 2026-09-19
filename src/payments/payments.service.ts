@@ -14,29 +14,22 @@ export class PaymentsService {
   /**
    * One row per student who belongs to THIS month, with their invoice embedded.
    *
-   * The list comes from the monthly roster, not from `isActive` — that's what
-   * keeps each month's payments separate: a student who left in October is still
-   * listed under September, and a student who came back in December doesn't
-   * retroactively appear in the months they were gone.
+   * The list is exactly the monthly roster — nothing else. That's what keeps
+   * each month's payments separate: a student who left in October is still
+   * listed under September, a student who came back in December doesn't
+   * retroactively appear in the months they were gone, and removing someone
+   * from a month removes them from that month's totals too.
    *
-   * Students who are off the roster but still carry an invoice for the month are
-   * kept too (flagged `onRoster: false`), so an unsettled balance can never be
-   * hidden just by removing someone from a month.
+   * A removed student's invoice row is NOT deleted — it just stops being part
+   * of this month's page. It remains visible on the Outstanding view, which is
+   * the cross-month "who still owes us" screen.
    */
   async listForMonth(year: number, month: number) {
     const rosterIds = await this.roster.studentIdsForMonth(year, month);
-
-    const invoiced = await this.prisma.payment.findMany({
-      where: { year, month },
-      select: { studentId: true },
-    });
-
-    const onRoster = new Set(rosterIds);
-    const ids = Array.from(new Set([...rosterIds, ...invoiced.map((p) => p.studentId)]));
-    if (ids.length === 0) return [];
+    if (rosterIds.length === 0) return [];
 
     const students = await this.prisma.student.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: rosterIds } },
       orderBy: { fullName: "asc" },
       include: {
         group: { select: { id: true, name: true } },
@@ -44,9 +37,7 @@ export class PaymentsService {
       },
     });
 
-    return serialize(
-      students.map((s) => ({ ...s, onRoster: onRoster.has(s.id) })),
-    );
+    return serialize(students);
   }
 
   async history(filter: { from?: string; to?: string; status?: string }) {
