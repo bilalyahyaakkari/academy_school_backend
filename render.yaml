@@ -20,9 +20,13 @@ services:
     # typescript at build time. They're not needed at runtime.
     buildCommand: npm install --include=dev && npx prisma generate && npm run build && npx prisma migrate deploy
     startCommand: node dist/main.js
-    # Public liveness probe at /api/health. Always returns 200 if the HTTP layer
-    # is up; DB status is reported in the body (so transient Neon cold-starts
-    # don't cause Render to recycle the service).
+    # Public liveness probe at /api/health. Returns 200 whenever the HTTP layer
+    # is up and — importantly — runs NO database query.
+    #
+    # Render polls this path constantly. When it used to check the database on
+    # every call, Neon's compute was queried around the clock and could never
+    # auto-suspend, which burns the whole free-tier compute allowance in a few
+    # weeks of doing nothing. Never point this at /api/health/db.
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV

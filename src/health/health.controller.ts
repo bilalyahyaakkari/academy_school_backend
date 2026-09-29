@@ -5,9 +5,15 @@ import { PrismaService } from "../prisma/prisma.service";
  * Public liveness probe. Used by Render's health check, uptime pings, and for
  * quick "is the backend alive?" checks. No JwtAuthGuard — intentional.
  *
- * Always returns 200 as long as the HTTP layer responds; DB reachability is
- * reported as a structured field. We deliberately do NOT 5xx on DB blips so
- * Render won't kill the process for a transient Neon cold-start.
+ * `GET /health` deliberately does NOT touch the database.
+ *
+ * It used to run `SELECT 1` on every call, and Render polls this path
+ * constantly — which meant the database was queried around the clock and
+ * Neon's compute could never auto-suspend. A month of that exhausts the free
+ * tier's compute hours even though nobody is using the app.
+ *
+ * The database check still exists, at `GET /health/db`, for when you actually
+ * want to know. Keep it off any automated polling path.
  */
 @Controller("health")
 export class HealthController {
@@ -15,22 +21,35 @@ export class HealthController {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Liveness: is the process serving HTTP? No database access. */
   @Get()
-  async check() {
-    const uptime = Math.round((Date.now() - this.startedAt) / 1000);
-    let db: "ok" | "error" = "ok";
-    let dbError: string | undefined;
+  check() {
+    return { status: "ok", uptime: this.uptime() };
+  }
+
+  /**
+   * Readiness: can we actually reach the database?
+   *
+   * Still answers 200 with `db: "error"` rather than 5xx, so pointing a
+   * platform health check at it by accident can't get the service recycled for
+   * a transient Neon cold start.
+   */
+  @Get("db")
+  async checkDb() {
     try {
       await this.prisma.$queryRaw`SELECT 1`;
+      return { status: "ok", db: "ok" as const, uptime: this.uptime() };
     } catch (err) {
-      db = "error";
-      dbError = err instanceof Error ? err.message : "unknown";
+      return {
+        status: "ok",
+        db: "error" as const,
+        dbError: err instanceof Error ? err.message : "unknown",
+        uptime: this.uptime(),
+      };
     }
-    return {
-      status: "ok",
-      db,
-      ...(dbError ? { dbError } : {}),
-      uptime,
-    };
+  }
+
+  private uptime() {
+    return Math.round((Date.now() - this.startedAt) / 1000);
   }
 }
